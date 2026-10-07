@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   BarChart3, 
   Crown, 
@@ -11,7 +11,8 @@ import {
   RotateCcw,
   ShieldCheck,
   TrendingDown,
-  Layers
+  Layers,
+  Filter
 } from 'lucide-react';
 import { TEAMS } from '../data/initialData';
 
@@ -22,6 +23,8 @@ export default function HouseStats({
   activityLogs = [],
   onResetData
 }) {
+  const [logFilter, setLogFilter] = useState('ALL');
+
   const activeContestants = contestants.filter(c => c.status !== 'Evicted');
   const evictedContestants = contestants.filter(c => c.status === 'Evicted');
   const nominees = contestants.filter(c => c.status === 'Nominated');
@@ -52,6 +55,34 @@ export default function HouseStats({
 
   const totalPointsInHouse = activeContestants.reduce((sum, c) => sum + c.points, 0);
 
+  // Filter Categories
+  const logCategories = ['ALL', 'POINTS', 'TASKS', 'CAPTAINCY', 'IMMUNITY', 'NOMINATIONS', 'EVICTIONS', 'SYSTEM'];
+
+  const filteredLogs = activityLogs.filter(log => {
+    if (logFilter === 'ALL') return true;
+    return (log.category || 'SYSTEM') === logFilter;
+  });
+
+  const getCategoryBadge = (cat) => {
+    switch (cat) {
+      case 'POINTS':
+        return 'bg-amber-950/80 border-amber-500/50 text-amber-300';
+      case 'TASKS':
+        return 'bg-purple-950/80 border-purple-500/50 text-purple-300';
+      case 'CAPTAINCY':
+        return 'bg-yellow-950/80 border-yellow-500/50 text-yellow-300';
+      case 'IMMUNITY':
+        return 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300';
+      case 'NOMINATIONS':
+        return 'bg-red-950/80 border-red-500/50 text-red-300';
+      case 'EVICTIONS':
+        return 'bg-rose-950/80 border-rose-500/50 text-rose-300';
+      case 'SYSTEM':
+      default:
+        return 'bg-cyan-950/80 border-cyan-500/50 text-cyan-300';
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -75,7 +106,7 @@ export default function HouseStats({
 
         <button
           onClick={onResetData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-mono font-bold rounded-xl flex items-center space-x-1.5 transition"
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-mono font-bold rounded-xl flex items-center space-x-1.5 transition cursor-pointer"
           title="Reset back to default Big Boss template state"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -128,8 +159,8 @@ export default function HouseStats({
         <div className="bg-gradient-to-b from-[#181309] to-[#0e1424] border border-amber-500/40 rounded-2xl p-4 shadow-lg flex items-center space-x-3.5">
           <div className="relative">
             <img
-              src={captain?.avatar}
-              alt={captain?.name}
+              src={captain?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+              alt={captain?.name || 'Contestant'}
               className="w-14 h-14 rounded-xl object-cover border-2 border-amber-400"
             />
             <div className="absolute -top-1.5 -right-1.5 bg-amber-500 text-black p-0.5 rounded-full">
@@ -205,7 +236,7 @@ export default function HouseStats({
         </div>
       </div>
 
-      {/* House Census & Chronological Activity Logs */}
+      {/* House Census & Enhanced Live Action Log */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* House Census Breakdown */}
@@ -239,30 +270,65 @@ export default function HouseStats({
           </div>
         </div>
 
-        {/* Chronological Activity Feed / Audit Trail */}
+        {/* FEATURE 3: Enhanced Live Action Log */}
         <div className="lg:col-span-2 bg-[#0e1526] border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-chakra font-bold text-white uppercase text-base flex items-center space-x-2">
-              <Activity className="w-4 h-4 text-amber-400" />
-              <span>Surveillance Activity Audit Feed</span>
-            </h3>
-            <span className="text-xs font-mono text-slate-400">
-              Real-time Event Stream
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5">
+            <div>
+              <h3 className="font-chakra font-bold text-white uppercase text-base flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-amber-400" />
+                <span>Enhanced Live Action Log</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 font-mono">
+                Real-time chronological telemetry feed with multi-category inspection
+              </p>
+            </div>
+            <span className="text-xs font-mono text-slate-400 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
+              {filteredLogs.length} of {activityLogs.length} Events
             </span>
           </div>
 
-          <div className="max-h-72 overflow-y-auto space-y-2 pr-1 font-mono text-xs">
-            {activityLogs.map((log, index) => (
+          {/* Category Filter Chips */}
+          <div className="flex items-center space-x-1.5 overflow-x-auto pb-2 mb-3 scrollbar-none">
+            {logCategories.map((cat) => {
+              const isActive = logFilter === cat;
+              const count = cat === 'ALL' 
+                ? activityLogs.length 
+                : activityLogs.filter(l => (l.category || 'SYSTEM') === cat).length;
+
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setLogFilter(cat)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold tracking-wider uppercase border transition whitespace-nowrap cursor-pointer flex items-center space-x-1 ${
+                    isActive
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                  }`}
+                >
+                  <span>{cat}</span>
+                  <span className={`text-[10px] px-1 rounded-full ${isActive ? 'bg-amber-500/40 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Action Log Entries List */}
+          <div className="max-h-80 overflow-y-auto space-y-2 pr-1 font-mono text-xs">
+            {filteredLogs.map((log, index) => (
               <div
                 key={log.id || index}
-                className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-2.5 flex items-start justify-between gap-3 hover:border-slate-700 transition"
+                className="bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 rounded-xl p-2.5 flex items-start justify-between gap-3 transition"
               >
-                <div className="flex items-start space-x-2">
-                  <span className="text-cyan-400 mt-0.5">•</span>
+                <div className="flex items-start space-x-2.5">
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded uppercase font-bold shrink-0 mt-0.5 border ${getCategoryBadge(log.category)}`}>
+                    {log.category || 'SYSTEM'}
+                  </span>
                   <div>
-                    <span className="text-slate-200">{log.action}</span>
+                    <span className="text-slate-100 font-semibold">{log.action}</span>
                     {log.details && (
-                      <span className="text-slate-400 block text-[11px] mt-0.5">{log.details}</span>
+                      <span className="text-slate-400 block text-[11px] mt-0.5 leading-relaxed">{log.details}</span>
                     )}
                   </div>
                 </div>
@@ -271,8 +337,10 @@ export default function HouseStats({
                 </span>
               </div>
             ))}
-            {activityLogs.length === 0 && (
-              <div className="text-center py-8 text-slate-500">No activity logged yet.</div>
+            {filteredLogs.length === 0 && (
+              <div className="text-center py-8 text-slate-500 font-mono text-xs">
+                No events found for category: <strong className="text-slate-400">{logFilter}</strong>
+              </div>
             )}
           </div>
         </div>

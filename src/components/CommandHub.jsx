@@ -11,15 +11,34 @@ import {
   ShieldCheck, 
   ChevronRight,
   TrendingUp,
-  Skull
+  Skull,
+  RotateCcw,
+  Activity,
+  Radio
 } from 'lucide-react';
 import EyeLogo from './EyeLogo';
+
+export const HOUSE_PHASES = [
+  'HOUSE',
+  'TASK',
+  'RESULTS',
+  'NOMINATION',
+  'DANGER ZONE',
+  'EVICTION',
+  'FINAL'
+];
 
 export default function CommandHub({
   contestants,
   tasks,
   captain,
   announcements,
+  housePhase = 'HOUSE',
+  onPhaseChange,
+  canUndo = false,
+  onUndo,
+  lastUndoAction = '',
+  activityLogs = [],
   onOpenPointModal,
   onOpenTaskModal,
   onOpenContestantModal,
@@ -35,8 +54,69 @@ export default function CommandHub({
   const topContestant = [...activeContestants].sort((a, b) => ((Number(b.points) || 0) - (Number(a.points) || 0)) || a.name.localeCompare(b.name))[0];
   const totalPoints = activeContestants.reduce((acc, c) => acc + (Number(c.points) || 0), 0);
 
+  // Phase badge styles
+  const phaseColors = {
+    'HOUSE': 'bg-cyan-950/80 border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]',
+    'TASK': 'bg-purple-950/80 border-purple-500/60 text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.3)]',
+    'RESULTS': 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]',
+    'NOMINATION': 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]',
+    'DANGER ZONE': 'bg-red-950/90 border-red-500 text-red-300 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]',
+    'EVICTION': 'bg-rose-950/90 border-rose-500 text-rose-200 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.4)]',
+    'FINAL': 'bg-yellow-950/90 border-yellow-400 text-yellow-300 shadow-[0_0_15px_rgba(250,204,21,0.4)]'
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
+      
+      {/* FEATURE 1: CURRENT HOUSE PHASE CONTROL */}
+      <div className="bg-[#0e1526] border border-cyan-500/40 rounded-2xl p-4 sm:p-5 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5">
+          <div className="flex items-center space-x-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping inline-block" />
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-chakra font-black text-white text-base uppercase tracking-wider">
+                  CURRENT HOUSE PHASE CONTROL
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/40 text-cyan-300">
+                  BIG BOSS COMMAND
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-mono">
+                Dictate the active operational round across surveillance screens without altering house records
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-mono text-slate-400 uppercase">Active Phase:</span>
+            <span className={`px-3 py-1 rounded-xl text-xs font-chakra font-black tracking-widest uppercase border ${phaseColors[housePhase] || phaseColors['HOUSE']}`}>
+              {housePhase}
+            </span>
+          </div>
+        </div>
+
+        {/* Phase Buttons Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-1">
+          {HOUSE_PHASES.map((p) => {
+            const isActive = housePhase === p;
+            return (
+              <button
+                key={p}
+                onClick={() => onPhaseChange && onPhaseChange(p)}
+                className={`py-2 px-2 rounded-xl text-xs font-chakra font-bold tracking-wider uppercase border transition text-center cursor-pointer ${
+                  isActive
+                    ? `${phaseColors[p] || phaseColors['HOUSE']} font-black ring-1 ring-white/20`
+                    : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 hover:bg-slate-850'
+                }`}
+              >
+                {p}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Top Quick Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-[#0e1526] border border-cyan-500/30 rounded-2xl p-4 relative overflow-hidden shadow-lg">
@@ -110,7 +190,7 @@ export default function CommandHub({
               </div>
               <button
                 onClick={onOpenCaptaincy}
-                className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg font-mono transition"
+                className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg font-mono transition cursor-pointer"
               >
                 Change Captain
               </button>
@@ -153,7 +233,7 @@ export default function CommandHub({
                 <p className="text-sm text-slate-400 mb-3">No House Captain appointed yet.</p>
                 <button
                   onClick={onOpenCaptaincy}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs font-mono uppercase rounded-xl transition"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs font-mono uppercase rounded-xl transition cursor-pointer"
                 >
                   Appoint Captain
                 </button>
@@ -165,7 +245,7 @@ export default function CommandHub({
             <span className="text-slate-400 font-mono">Tasks Lead: {captain ? captain.tasksCompleted : 0} Done</span>
             <button
               onClick={() => onOpenPointModal(captain ? captain.id : null)}
-              className="text-amber-400 hover:text-amber-300 font-mono flex items-center space-x-1"
+              className="text-amber-400 hover:text-amber-300 font-mono flex items-center space-x-1 cursor-pointer"
             >
               <span>Award Captain Bonus</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -195,7 +275,7 @@ export default function CommandHub({
               </div>
               <button
                 onClick={() => onSelectTab('danger')}
-                className="text-xs font-mono text-red-400 hover:text-red-300 flex items-center space-x-1"
+                className="text-xs font-mono text-red-400 hover:text-red-300 flex items-center space-x-1 cursor-pointer"
               >
                 <span>Full Danger Control</span>
                 <ChevronRight className="w-4 h-4" />
@@ -225,7 +305,7 @@ export default function CommandHub({
                     </div>
                     <button
                       onClick={() => onOpenEviction(c)}
-                      className="w-full py-1.5 bg-red-600/80 hover:bg-red-600 text-white font-chakra font-bold text-xs uppercase tracking-wider rounded-lg flex items-center justify-center space-x-1 transition"
+                      className="w-full py-1.5 bg-red-600/80 hover:bg-red-600 text-white font-chakra font-bold text-xs uppercase tracking-wider rounded-lg flex items-center justify-center space-x-1 transition cursor-pointer"
                     >
                       <Skull className="w-3.5 h-3.5" />
                       <span>Evict Contestant</span>
@@ -240,15 +320,33 @@ export default function CommandHub({
             )}
           </div>
 
-          {/* Quick Action Control Strip */}
+          {/* Quick Action Control Strip with UNDO button */}
           <div className="bg-[#0e1526] border border-slate-800 rounded-2xl p-4">
-            <div className="text-xs font-mono uppercase text-slate-400 mb-3 tracking-wider">
-              Big Boss Master Shortcuts
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-mono uppercase text-slate-400 tracking-wider">
+                Big Boss Master Shortcuts
+              </div>
+              
+              {/* FEATURE 2: Undo action indicator */}
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-mono font-bold border transition ${
+                  canUndo
+                    ? 'bg-amber-950/60 hover:bg-amber-900 border-amber-500/70 text-amber-300 cursor-pointer shadow-md'
+                    : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed opacity-60'
+                }`}
+                title={canUndo ? `Undo: ${lastUndoAction}` : 'History empty'}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>UNDO ACTION</span>
+              </button>
             </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <button
                 onClick={() => onOpenPointModal(null)}
-                className="p-3 rounded-xl bg-slate-900 hover:bg-cyan-950/50 border border-slate-800 hover:border-cyan-500/50 text-left transition group"
+                className="p-3 rounded-xl bg-slate-900 hover:bg-cyan-950/50 border border-slate-800 hover:border-cyan-500/50 text-left transition group cursor-pointer"
               >
                 <div className="text-cyan-400 mb-1 group-hover:scale-110 transition origin-left">
                   <Zap className="w-5 h-5" />
@@ -259,7 +357,7 @@ export default function CommandHub({
 
               <button
                 onClick={onOpenTaskModal}
-                className="p-3 rounded-xl bg-slate-900 hover:bg-purple-950/50 border border-slate-800 hover:border-purple-500/50 text-left transition group"
+                className="p-3 rounded-xl bg-slate-900 hover:bg-purple-950/50 border border-slate-800 hover:border-purple-500/50 text-left transition group cursor-pointer"
               >
                 <div className="text-purple-400 mb-1 group-hover:scale-110 transition origin-left">
                   <Plus className="w-5 h-5" />
@@ -270,7 +368,7 @@ export default function CommandHub({
 
               <button
                 onClick={() => onSelectTab('timer')}
-                className="p-3 rounded-xl bg-slate-900 hover:bg-amber-950/50 border border-slate-800 hover:border-amber-500/50 text-left transition group"
+                className="p-3 rounded-xl bg-slate-900 hover:bg-amber-950/50 border border-slate-800 hover:border-amber-500/50 text-left transition group cursor-pointer"
               >
                 <div className="text-amber-400 mb-1 group-hover:scale-110 transition origin-left">
                   <Timer className="w-5 h-5" />
@@ -281,7 +379,7 @@ export default function CommandHub({
 
               <button
                 onClick={onOpenContestantModal}
-                className="p-3 rounded-xl bg-slate-900 hover:bg-emerald-950/50 border border-slate-800 hover:border-emerald-500/50 text-left transition group"
+                className="p-3 rounded-xl bg-slate-900 hover:bg-emerald-950/50 border border-slate-800 hover:border-emerald-500/50 text-left transition group cursor-pointer"
               >
                 <div className="text-emerald-400 mb-1 group-hover:scale-110 transition origin-left">
                   <Users className="w-5 h-5" />
@@ -295,7 +393,7 @@ export default function CommandHub({
         </div>
       </div>
 
-      {/* Lower Row: Active Tasks HQ Preview + Leaderboard Snippet */}
+      {/* Lower Row: Active Tasks HQ Preview + Live Action Log Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Active Tasks Widget */}
@@ -307,7 +405,7 @@ export default function CommandHub({
             </div>
             <button
               onClick={() => onSelectTab('tasks')}
-              className="text-xs font-mono text-purple-400 hover:text-purple-300 flex items-center space-x-1"
+              className="text-xs font-mono text-purple-400 hover:text-purple-300 flex items-center space-x-1 cursor-pointer"
             >
               <span>View All ({tasks.length})</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -334,7 +432,7 @@ export default function CommandHub({
 
                 <button
                   onClick={() => onCompleteTask(task.id)}
-                  className="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-mono font-bold rounded-lg shrink-0 transition flex items-center space-x-1 shadow-md"
+                  className="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-mono font-bold rounded-lg shrink-0 transition flex items-center space-x-1 shadow-md cursor-pointer"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Award & Complete</span>
@@ -349,59 +447,53 @@ export default function CommandHub({
           </div>
         </div>
 
-        {/* Top 4 Leaderboard Snippet */}
+        {/* Live Action Log Snippet */}
         <div className="bg-[#0e1526] border border-slate-800 rounded-2xl p-5 shadow-xl">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
-              <TrendingUp className="w-5 h-5 text-amber-400" />
-              <h3 className="font-chakra font-bold text-white uppercase text-base">Top Contenders Live</h3>
+              <Activity className="w-5 h-5 text-amber-400" />
+              <h3 className="font-chakra font-bold text-white uppercase text-base">Live Action Stream</h3>
             </div>
             <button
-              onClick={() => onSelectTab('leaderboard')}
-              className="text-xs font-mono text-amber-400 hover:text-amber-300 flex items-center space-x-1"
+              onClick={() => onSelectTab('stats')}
+              className="text-xs font-mono text-amber-400 hover:text-amber-300 flex items-center space-x-1 cursor-pointer"
             >
-              <span>Full Standings</span>
+              <span>Full Audit ({activityLogs.length})</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="space-y-2.5">
-            {[...activeContestants]
-              .sort((a, b) => b.points - a.points)
-              .slice(0, 4)
-              .map((c, index) => (
-                <div
-                  key={c.id}
-                  className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between"
-                >
-                  <div className="flex items-center space-x-3">
-                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-chakra font-bold text-xs ${
-                      index === 0 ? 'bg-amber-500 text-black' :
-                      index === 1 ? 'bg-slate-300 text-black' :
-                      index === 2 ? 'bg-amber-700 text-white' : 'bg-slate-800 text-slate-400'
-                    }`}>
-                      #{index + 1}
-                    </span>
-                    <img
-                      src={c.avatar}
-                      alt={c.name}
-                      className="w-8 h-8 rounded-full object-cover border border-slate-700"
-                    />
-                    <div>
-                      <div className="font-chakra font-bold text-sm text-white flex items-center space-x-1.5">
-                        <span>{c.name}</span>
-                        {c.isCaptain && <Crown className="w-3.5 h-3.5 text-amber-400" />}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono">{c.team}</div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="font-mono font-bold text-amber-400 text-sm">{c.points} PTS</div>
-                    <div className="text-[10px] text-slate-400 font-mono">{c.tasksCompleted} Tasks</div>
+          <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+            {activityLogs.slice(0, 4).map((log, index) => (
+              <div
+                key={log.id || index}
+                className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 flex items-start justify-between gap-3"
+              >
+                <div className="flex items-start space-x-2.5">
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded uppercase font-bold shrink-0 mt-0.5 ${
+                    log.category === 'POINTS' ? 'bg-amber-950 text-amber-300 border border-amber-500/40' :
+                    log.category === 'TASKS' ? 'bg-purple-950 text-purple-300 border border-purple-500/40' :
+                    log.category === 'CAPTAINCY' ? 'bg-yellow-950 text-yellow-300 border border-yellow-500/40' :
+                    log.category === 'IMMUNITY' ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' :
+                    log.category === 'NOMINATIONS' ? 'bg-red-950 text-red-300 border border-red-500/40' :
+                    log.category === 'EVICTIONS' ? 'bg-rose-950 text-rose-300 border border-rose-500/40' :
+                    'bg-cyan-950 text-cyan-300 border border-cyan-500/40'
+                  }`}>
+                    {log.category || 'SYSTEM'}
+                  </span>
+                  <div>
+                    <div className="font-mono text-xs text-white font-semibold">{log.action}</div>
+                    {log.details && (
+                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">{log.details}</div>
+                    )}
                   </div>
                 </div>
-              ))}
+
+                <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                  {log.timestamp}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 

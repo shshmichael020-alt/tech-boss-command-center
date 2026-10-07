@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, Megaphone, Crown, ShieldAlert, Radio } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, Megaphone, Crown, ShieldAlert, RotateCcw } from 'lucide-react';
 import EyeLogo from './EyeLogo';
 import { soundManager } from '../utils/audio';
 
@@ -9,7 +9,12 @@ export default function Header({
   onOpenCaptaincy,
   dangerCount = 0,
   currentDay = 22,
-  chaosIndex = 68
+  chaosIndex = 68,
+  housePhase = 'HOUSE',
+  canUndo = false,
+  onUndo,
+  undoCount = 0,
+  lastUndoAction = ''
 }) {
   const [time, setTime] = useState(new Date().toLocaleTimeString());
   const [soundOn, setSoundOn] = useState(true);
@@ -35,6 +40,19 @@ export default function Header({
     soundManager.voiceEnabled = next;
     if (next) soundManager.speak("Big Boss voice engine online.");
   };
+
+  // Phase badge styling
+  const phaseColors = {
+    'HOUSE': 'bg-cyan-950/80 border-cyan-500/60 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.25)]',
+    'TASK': 'bg-purple-950/80 border-purple-500/60 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.25)]',
+    'RESULTS': 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.25)]',
+    'NOMINATION': 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.25)]',
+    'DANGER ZONE': 'bg-red-950/90 border-red-500 text-red-300 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.4)]',
+    'EVICTION': 'bg-rose-950/90 border-rose-500 text-rose-200 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.4)]',
+    'FINAL': 'bg-yellow-950/90 border-yellow-400 text-yellow-300 shadow-[0_0_15px_rgba(250,204,21,0.4)]'
+  };
+
+  const currentPhaseStyle = phaseColors[housePhase] || phaseColors['HOUSE'];
 
   return (
     <header className="relative bg-[#090e1b] border-b border-red-500/30 px-4 sm:px-6 py-3.5 z-30 shadow-2xl backdrop-blur-md">
@@ -62,8 +80,37 @@ export default function Header({
           </div>
         </div>
 
-        {/* Quick Surveillance Intel & Captain Pill */}
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        {/* Global Controls & Status */}
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          
+          {/* Global House Phase Badge */}
+          <div className="flex items-center space-x-1.5 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-mono">
+            <span className="text-slate-400 text-[11px]">PHASE:</span>
+            <span className={`px-2 py-0.5 rounded-md font-chakra font-black tracking-wider text-xs border ${currentPhaseStyle}`}>
+              {housePhase}
+            </span>
+          </div>
+
+          {/* Undo Button */}
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            title={canUndo ? `Undo: "${lastUndoAction}"` : 'No actions to undo'}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition ${
+              canUndo
+                ? 'bg-amber-950/60 hover:bg-amber-900/80 border-amber-500/70 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.25)] cursor-pointer'
+                : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed opacity-60'
+            }`}
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${canUndo ? 'text-amber-400' : 'text-slate-600'}`} />
+            <span>UNDO</span>
+            {canUndo && (
+              <span className="text-[10px] bg-amber-500/30 px-1 py-0.2 rounded font-mono text-amber-300">
+                {undoCount}
+              </span>
+            )}
+          </button>
+
           {/* House Captain Badge */}
           {captain ? (
             <button
@@ -93,7 +140,7 @@ export default function Header({
           )}
 
           {/* Chaos / Harmony Meter */}
-          <div className="hidden lg:flex items-center space-x-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-mono">
+          <div className="hidden xl:flex items-center space-x-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-mono">
             <span className="text-slate-400">Chaos:</span>
             <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden">
               <div 

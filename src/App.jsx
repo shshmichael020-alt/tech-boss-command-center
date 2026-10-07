@@ -22,7 +22,7 @@ import {
 } from './data/initialData';
 import { soundManager } from './utils/audio';
 
-// Safe localStorage loader
+// Safe localStorage loaders
 const loadStorage = (key, fallback) => {
   try {
     const item = localStorage.getItem(key);
@@ -35,9 +35,29 @@ const loadStorage = (key, fallback) => {
   }
 };
 
+const loadStorageString = (key, fallback) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item || fallback;
+  } catch (err) {
+    return fallback;
+  }
+};
+
 export default function App() {
   // Navigation active tab: 'hub' | 'contestants' | 'leaderboard' | 'tasks' | 'danger' | 'timer' | 'stats'
   const [activeTab, setActiveTab] = useState('hub');
+
+  // FEATURE 1: House Phase state
+  const [housePhase, setHousePhase] = useState(() => 
+    loadStorageString('bigboss_phase', 'HOUSE')
+  );
+
+  // FEATURE 2: Undo History Stack
+  const [history, setHistory] = useState([]);
+
+  // Toast feedback state
+  const [toastMessage, setToastMessage] = useState(null);
 
   // Contestants state (with safe LocalStorage fallback)
   const [contestants, setContestants] = useState(() => 
@@ -54,12 +74,12 @@ export default function App() {
     loadStorage('bigboss_announcements', INITIAL_ANNOUNCEMENTS)
   );
 
-  // Activity audit log
+  // FEATURE 3: Activity audit log with categories
   const [activityLogs, setActivityLogs] = useState(() => 
     loadStorage('bigboss_logs', [
-      { id: 'l1', action: 'System online: Tech House Command Center operational', timestamp: 'Day 22, 08:00' },
-      { id: 'l2', action: 'Captaincy conferred upon Aria Stark', timestamp: 'Day 21, 19:30' },
-      { id: 'l3', action: 'Danger Zone activated with 3 nominees', timestamp: 'Day 21, 16:00' },
+      { id: 'l1', action: 'System online: Tech House Command Center operational', details: 'All surveillance telemetry active', category: 'SYSTEM', timestamp: 'Day 22, 08:00' },
+      { id: 'l2', action: 'Captaincy conferred upon Aria Stark', details: 'Aria Stark sworn in as House Captain', category: 'CAPTAINCY', timestamp: 'Day 21, 19:30' },
+      { id: 'l3', action: 'Danger Zone activated with 3 nominees', details: 'Vikram, Marcus and Chloe on the block', category: 'NOMINATIONS', timestamp: 'Day 21, 16:00' },
     ])
   );
 
@@ -80,6 +100,12 @@ export default function App() {
   const [latestAnnouncementOverlay, setLatestAnnouncementOverlay] = useState(null);
 
   // Sync state to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('bigboss_phase', housePhase);
+    } catch (e) { console.warn(e); }
+  }, [housePhase]);
+
   useEffect(() => {
     try {
       localStorage.setItem('bigboss_contestants', JSON.stringify(contestants));
@@ -104,15 +130,66 @@ export default function App() {
     } catch (e) { console.warn(e); }
   }, [activityLogs]);
 
+  // Helper: Toast notification
+  const showToast = (msg, isError = false) => {
+    setToastMessage({ msg, isError });
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
   // Helper: Log House Activity
-  const logActivity = (action, details = '') => {
+  const logActivity = (action, details = '', category = 'SYSTEM') => {
     const newLog = {
-      id: 'log_' + Date.now(),
+      id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       action,
       details,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      category,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]); // keep last 50
+  };
+
+  // Helper: Push state snapshot onto Undo History
+  const pushHistory = (label, category = 'SYSTEM') => {
+    setHistory(prev => [
+      {
+        id: 'snap_' + Date.now(),
+        label,
+        category,
+        contestants: JSON.parse(JSON.stringify(contestants)),
+        tasks: JSON.parse(JSON.stringify(tasks)),
+        housePhase
+      },
+      ...prev.slice(0, 19) // keep max 20 entries
+    ]);
+  };
+
+  // FEATURE 2: Undo Last Action handler
+  const handleUndo = () => {
+    if (history.length === 0) return;
+    const [lastSnapshot, ...remainingHistory] = history;
+    if (!lastSnapshot) return;
+
+    setContestants(lastSnapshot.contestants);
+    setTasks(lastSnapshot.tasks);
+    if (lastSnapshot.housePhase) {
+      setHousePhase(lastSnapshot.housePhase);
+    }
+    setHistory(remainingHistory);
+
+    soundManager.playSuccess();
+    showToast(`Undo: Reverted "${lastSnapshot.label}"`);
+    logActivity(`UNDO ACTION`, `Reverted "${lastSnapshot.label}"`, 'SYSTEM');
+  };
+
+  // FEATURE 1: Phase change handler
+  const handlePhaseChange = (newPhase) => {
+    if (newPhase === housePhase) return;
+    pushHistory(`House Phase changed to ${newPhase}`, 'SYSTEM');
+    const oldPhase = housePhase;
+    setHousePhase(newPhase);
+    soundManager.playGong();
+    logActivity(`House Phase changed`, `${oldPhase} → ${newPhase}`, 'SYSTEM');
+    showToast(`Current House Phase: [ ${newPhase} ]`);
   };
 
   // Derived Single Source of Truth
@@ -128,6 +205,12 @@ export default function App() {
     const numAmount = Math.round(Number(amount));
     if (isNaN(numAmount) || numAmount === 0) return;
 
+    const target = contestants.find(c => c.id === contestantId);
+    const sign = numAmount > 0 ? `+${numAmount}` : `${numAmount}`;
+
+    // Snapshot before modifying
+    pushHistory(`${sign} points to ${target ? target.name.split(' ')[0] : 'Contestant'}`, 'POINTS');
+
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
         const currentPoints = Number(c.points) || 0;
@@ -137,9 +220,7 @@ export default function App() {
       return c;
     }));
 
-    const target = contestants.find(c => c.id === contestantId);
-    const sign = numAmount > 0 ? `+${numAmount}` : `${numAmount}`;
-    logActivity(`Points Transaction: ${sign} PTS to ${target ? target.name : contestantId}`, `Reason: ${reason}`);
+    logActivity(`Points Transaction: ${sign} PTS to ${target ? target.name : contestantId}`, `Reason: ${reason}`, 'POINTS');
   };
 
   const handleQuickPoints = (contestantId, amount, reason = 'Quick adjustment') => {
@@ -153,6 +234,12 @@ export default function App() {
 
   // Captaincy Assignment (Only 1 Captain, previous captain loses status, new captain gets immunity)
   const handleAssignCaptain = (newCaptainId) => {
+    const newCap = contestants.find(c => c.id === newCaptainId);
+    if (!newCap) return;
+
+    // Snapshot before modifying
+    pushHistory(`Appointed ${newCap.name.split(' ')[0]} as Captain`, 'CAPTAINCY');
+
     setContestants(prev => prev.map(c => {
       if (c.id === newCaptainId) {
         return {
@@ -176,19 +263,21 @@ export default function App() {
       return c;
     }));
 
-    const newCap = contestants.find(c => c.id === newCaptainId);
-    if (newCap) {
-      const msg = `Captaincy Decree: ${newCap.name} has been sworn in as the new House Captain!`;
-      handleAddAnnouncement(msg, 'captaincy');
-      logActivity(`House Captain Inauguration`, `${newCap.name} sworn into office with full immunity.`);
-    }
+    const msg = `Captaincy Decree: ${newCap.name} has been sworn in as the new House Captain!`;
+    handleAddAnnouncement(msg, 'captaincy');
+    logActivity(`House Captain Inauguration`, `${newCap.name} sworn into office with full immunity.`, 'CAPTAINCY');
   };
 
   // Immunity Toggle (If granted to nominated contestant, automatically removes them from Danger Zone)
   const handleToggleImmunity = (contestantId) => {
+    const target = contestants.find(c => c.id === contestantId);
+    if (!target || target.status === 'Evicted') return;
+
+    // Snapshot before modifying
+    pushHistory(`${target.isImmune ? 'Revoked' : 'Granted'} immunity for ${target.name.split(' ')[0]}`, 'IMMUNITY');
+
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
-        if (c.status === 'Evicted') return c;
         const nextImmune = !c.isImmune;
         
         let nextStatus = c.status;
@@ -211,11 +300,8 @@ export default function App() {
       return c;
     }));
 
-    const target = contestants.find(c => c.id === contestantId);
-    if (target) {
-      const statusText = !target.isImmune ? 'GRANTED' : 'REVOKED';
-      logActivity(`Immunity Protocol: ${statusText} for ${target.name}`);
-    }
+    const statusText = !target.isImmune ? 'GRANTED' : 'REVOKED';
+    logActivity(`Immunity Protocol: ${statusText} for ${target.name}`, '', 'IMMUNITY');
   };
 
   // Nomination Toggle (Strict validation: immune, captain, or evicted CANNOT be nominated)
@@ -226,10 +312,13 @@ export default function App() {
     // Strict guard against nominating immune / captain / evicted
     if (target.status !== 'Nominated') {
       if (target.isImmune || target.isCaptain || target.status === 'Evicted') {
-        logActivity(`Nomination Blocked`, `${target.name} has immunity shield / captaincy and cannot be nominated.`);
+        logActivity(`Nomination Blocked`, `${target.name} has immunity shield / captaincy and cannot be nominated.`, 'NOMINATIONS');
         return;
       }
     }
+
+    const isNom = target.status === 'Nominated';
+    pushHistory(`${isNom ? 'Pardoned' : 'Nominated'} ${target.name.split(' ')[0]}`, 'NOMINATIONS');
 
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
@@ -244,15 +333,20 @@ export default function App() {
       return c;
     }));
 
-    const isNom = target.status === 'Nominated';
     logActivity(
       isNom ? `Pardoned from Danger Zone: ${target.name}` : `Nominated to Danger Zone: ${target.name}`,
-      reason || ''
+      reason || '',
+      'NOMINATIONS'
     );
   };
 
   // Eviction Execution (Removes from active house & leaderboard, clears immunity & captaincy)
   const handleConfirmEviction = (contestantId, reason) => {
+    const target = contestants.find(c => c.id === contestantId);
+    if (!target) return;
+
+    pushHistory(`Evicted ${target.name.split(' ')[0]}`, 'EVICTIONS');
+
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
         return {
@@ -269,16 +363,18 @@ export default function App() {
       return c;
     }));
 
-    const target = contestants.find(c => c.id === contestantId);
-    if (target) {
-      const decree = `EVICTION VERDICT: ${target.name} has been formally evicted from the Tech House.`;
-      handleAddAnnouncement(decree, 'danger');
-      logActivity(`CONTESTANT EVICTED: ${target.name}`, `Reason: ${reason}`);
-    }
+    const decree = `EVICTION VERDICT: ${target.name} has been formally evicted from the Tech House.`;
+    handleAddAnnouncement(decree, 'danger');
+    logActivity(`CONTESTANT EVICTED: ${target.name}`, `Reason: ${reason}`, 'EVICTIONS');
   };
 
   // Wildcard Revive Evicted Contestant
   const handleReviveContestant = (contestantId) => {
+    const target = contestants.find(c => c.id === contestantId);
+    if (!target) return;
+
+    pushHistory(`Wildcard restored ${target.name.split(' ')[0]}`, 'EVICTIONS');
+
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
         return {
@@ -291,26 +387,25 @@ export default function App() {
       return c;
     }));
 
-    const target = contestants.find(c => c.id === contestantId);
-    if (target) {
-      soundManager.playSuccess();
-      handleAddAnnouncement(`WILDCARD RETURN: ${target.name} has re-entered the Tech House!`, 'alert');
-      logActivity(`Wildcard Entry Reinstated: ${target.name}`);
-    }
+    soundManager.playSuccess();
+    handleAddAnnouncement(`WILDCARD RETURN: ${target.name} has re-entered the Tech House!`, 'alert');
+    logActivity(`Wildcard Entry Reinstated: ${target.name}`, '', 'EVICTIONS');
   };
 
   // Add or Edit Contestant
   const handleSaveContestant = (data) => {
     if (editingContestant) {
+      pushHistory(`Modified ${data.name.split(' ')[0]}`, 'SYSTEM');
       setContestants(prev => prev.map(c => c.id === data.id ? { ...c, ...data, points: Math.max(0, Number(data.points) || 0) } : c));
-      logActivity(`Contestant Profile Modified: ${data.name}`);
+      logActivity(`Contestant Profile Modified: ${data.name}`, '', 'SYSTEM');
     } else {
+      pushHistory(`Enlisted ${data.name.split(' ')[0]}`, 'SYSTEM');
       const validatedData = {
         ...data,
         points: Math.max(0, Number(data.points) || 0)
       };
       setContestants(prev => [validatedData, ...prev]);
-      logActivity(`New Contestant Enlisted: ${data.name} (${data.team})`);
+      logActivity(`New Contestant Enlisted: ${data.name} (${data.team})`, '', 'SYSTEM');
       soundManager.playSuccess();
     }
     setEditingContestant(null);
@@ -320,6 +415,8 @@ export default function App() {
   const handleCompleteTask = (taskId) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return;
+
+    pushHistory(`Completed task "${targetTask.title}"`, 'TASKS');
 
     // Mark task complete
     setTasks(prev => prev.map(t => {
@@ -357,12 +454,14 @@ export default function App() {
       }));
     }
 
-    logActivity(`Task Completed: "${targetTask.title}"`, `+${rewardPts} PTS awarded to ${targetTask.assignedTo}`);
+    logActivity(`Task Completed: "${targetTask.title}"`, `+${rewardPts} PTS awarded to ${targetTask.assignedTo}`, 'TASKS');
   };
 
   const handleFailTask = (taskId) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return;
+
+    pushHistory(`Failed task "${targetTask.title}"`, 'TASKS');
 
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
@@ -371,18 +470,23 @@ export default function App() {
       return t;
     }));
 
-    logActivity(`Task Failed: "${targetTask.title}" by ${targetTask.assignedTo}`);
+    logActivity(`Task Failed: "${targetTask.title}" by ${targetTask.assignedTo}`, '', 'TASKS');
   };
 
   const handleDeleteTask = (taskId) => {
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) return;
+
+    pushHistory(`Deleted task "${targetTask.title}"`, 'TASKS');
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    logActivity(`Task Record Deleted`);
+    logActivity(`Task Record Deleted: "${targetTask.title}"`, '', 'TASKS');
   };
 
   const handleAddTask = (newTask) => {
+    pushHistory(`Commissioned task "${newTask.title}"`, 'TASKS');
     setTasks(prev => [newTask, ...prev]);
     soundManager.playSuccess();
-    logActivity(`New Directive Dispatched: "${newTask.title}" for ${newTask.assignedTo}`);
+    logActivity(`New Directive Dispatched: "${newTask.title}" for ${newTask.assignedTo}`, '', 'TASKS');
   };
 
   // Announcements (Rejects empty / whitespace)
@@ -399,7 +503,7 @@ export default function App() {
     };
     setAnnouncements(prev => [item, ...prev]);
     setLatestAnnouncementOverlay(item);
-    logActivity(`Announcement Broadcast: "${cleanMessage}"`);
+    logActivity(`Announcement Broadcast: "${cleanMessage}"`, '', 'SYSTEM');
   };
 
   // Nominee Votes Update
@@ -415,11 +519,13 @@ export default function App() {
   // Reset to Sample Demo Data
   const handleResetData = () => {
     if (window.confirm("Reset all Tech House data back to fresh Big Boss initial state?")) {
+      pushHistory('Reset House to Default Demo State', 'SYSTEM');
       setContestants(INITIAL_CONTESTANTS);
       setTasks(INITIAL_TASKS);
       setAnnouncements(INITIAL_ANNOUNCEMENTS);
+      setHousePhase('HOUSE');
       setActivityLogs([
-        { id: 'l_init', action: 'House data reset to default Big Boss demo state', timestamp: 'Just now' }
+        { id: 'l_init', action: 'House data reset to default Big Boss demo state', details: 'Initial conditions restored', category: 'SYSTEM', timestamp: 'Just now' }
       ]);
       try { localStorage.clear(); } catch (e) { console.warn(e); }
       soundManager.playGong();
@@ -428,6 +534,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans grid-bg">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className={`fixed top-16 right-6 z-50 px-5 py-3 rounded-2xl shadow-2xl font-mono text-xs flex items-center space-x-3 border animate-bounce ${
+          toastMessage.isError
+            ? 'bg-red-950/95 border-red-500 text-red-200'
+            : 'bg-emerald-950/95 border-emerald-500 text-emerald-200'
+        }`}>
+          <span className="font-semibold">{toastMessage.msg}</span>
+        </div>
+      )}
+
       {/* Top Surveillance Ticker */}
       <BroadcastBanner
         announcements={announcements}
@@ -438,7 +555,7 @@ export default function App() {
         onDismissLatest={() => setLatestAnnouncementOverlay(null)}
       />
 
-      {/* Main Command Header */}
+      {/* Main Command Header with Phase Display & Undo */}
       <Header
         captain={captain}
         dangerCount={dangerCount}
@@ -446,6 +563,11 @@ export default function App() {
         onOpenCaptaincy={() => setIsCaptaincyModalOpen(true)}
         currentDay={22}
         chaosIndex={68}
+        housePhase={housePhase}
+        canUndo={history.length > 0}
+        onUndo={handleUndo}
+        undoCount={history.length}
+        lastUndoAction={history[0]?.label || ''}
       />
 
       {/* Navigation Tabs */}
@@ -467,6 +589,12 @@ export default function App() {
             tasks={tasks}
             captain={captain}
             announcements={announcements}
+            housePhase={housePhase}
+            onPhaseChange={handlePhaseChange}
+            canUndo={history.length > 0}
+            onUndo={handleUndo}
+            lastUndoAction={history[0]?.label || ''}
+            activityLogs={activityLogs}
             onOpenPointModal={(id) => {
               setSelectedContestantForPoints(id);
               setIsPointModalOpen(true);
@@ -555,7 +683,10 @@ export default function App() {
         {/* Task Timer is kept mounted with display toggle so countdown is never interrupted across tab switches */}
         <div className={activeTab === 'timer' ? 'block' : 'hidden'}>
           <TaskTimer
-            onAnnounceTimerDone={(msg) => handleAddAnnouncement(msg, 'danger')}
+            onAnnounceTimerDone={(msg) => {
+              handleAddAnnouncement(msg, 'danger');
+              logActivity('Timer Notification', msg, 'SYSTEM');
+            }}
           />
         </div>
 
