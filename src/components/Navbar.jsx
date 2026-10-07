@@ -6,7 +6,8 @@ import {
   CheckSquare, 
   AlertTriangle, 
   Timer, 
-  BarChart3 
+  BarChart3,
+  TrendingUp 
 } from 'lucide-react';
 
 export default function Navbar({ activeTab, onSelectTab, counts }) {
@@ -17,7 +18,8 @@ export default function Navbar({ activeTab, onSelectTab, counts }) {
     { id: 'tasks', label: 'Tasks HQ', icon: CheckSquare, badge: counts.activeTasks },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle, badge: counts.danger, badgeColor: 'bg-red-500' },
     { id: 'timer', label: 'Task Timer', icon: Timer },
-    { id: 'stats', label: 'House Intel', icon: BarChart3 }
+    { id: 'stats', label: 'House Intel', icon: BarChart3 },
+    { id: 'analytics', label: 'Analytics', icon: TrendingUp }
   ];
 
   return (

@@ -343,7 +343,7 @@ export default function CommandHub({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
               <button
                 onClick={() => onOpenPointModal(null)}
                 className="p-3 rounded-xl bg-slate-900 hover:bg-cyan-950/50 border border-slate-800 hover:border-cyan-500/50 text-left transition group cursor-pointer"
@@ -378,7 +378,7 @@ export default function CommandHub({
               </button>
 
               <button
-                onClick={onOpenContestantModal}
+                onClick={() => onOpenContestantModal()}
                 className="p-3 rounded-xl bg-slate-900 hover:bg-emerald-950/50 border border-slate-800 hover:border-emerald-500/50 text-left transition group cursor-pointer"
               >
                 <div className="text-emerald-400 mb-1 group-hover:scale-110 transition origin-left">
@@ -386,6 +386,17 @@ export default function CommandHub({
                 </div>
                 <div className="font-chakra font-bold text-white text-xs uppercase">Enlist Player</div>
                 <div className="text-[10px] text-slate-400 font-mono">Add new housemate</div>
+              </button>
+
+              <button
+                onClick={() => onSelectTab('analytics')}
+                className="p-3 rounded-xl bg-slate-900 hover:bg-rose-950/50 border border-slate-800 hover:border-rose-500/50 text-left transition group cursor-pointer col-span-2 sm:col-span-1"
+              >
+                <div className="text-rose-400 mb-1 group-hover:scale-110 transition origin-left">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div className="font-chakra font-bold text-white text-xs uppercase">Analytics</div>
+                <div className="text-[10px] text-slate-400 font-mono">Deep Telemetry</div>
               </button>
             </div>
           </div>

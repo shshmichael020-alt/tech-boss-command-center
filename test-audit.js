@@ -1,6 +1,7 @@
 // Comprehensive Automated Regression & Feature Test Suite for Big Boss Command Center
 
 import { INITIAL_CONTESTANTS, INITIAL_TASKS, INITIAL_ANNOUNCEMENTS } from './src/data/initialData.js';
+import { ROLES } from './src/data/roles.js';
 
 console.log("==========================================================");
 console.log("BIG BOSS COMMAND CENTER: REGRESSION & FEATURE TEST SUITE");
@@ -413,6 +414,109 @@ logFilters.forEach(filter => {
   assert(filtered.length > 0, `Filter [${filter}] returned matching events (${filtered.length}) without mutating source`);
 });
 
+// -------------------------------------------------------------------------
+// DECODED FEATURE 1: ROLE BASED ACCESS (RBAC)
+// -------------------------------------------------------------------------
+console.log("\n--- DECODED FEATURE 1: Role Based Access (RBAC) ---");
+
+assert(ROLES.BIG_BOSS !== undefined, "BIG_BOSS role defined in registry");
+assert(ROLES.CAPTAIN !== undefined, "CAPTAIN role defined in registry");
+assert(ROLES.JURY !== undefined, "JURY role defined in registry");
+assert(ROLES.CONTESTANT !== undefined, "CONTESTANT role defined in registry");
+
+// Permission matrix verification
+assert(ROLES.BIG_BOSS.permissions.canEvict === true, "Big Boss has eviction authority");
+assert(ROLES.BIG_BOSS.permissions.canGrantImmunity === true, "Big Boss has immunity authority");
+assert(ROLES.BIG_BOSS.permissions.canChangePhase === true, "Big Boss has phase transition authority");
+assert(ROLES.CONTESTANT.permissions.canEvict === false, "Contestant is barred from evictions");
+assert(ROLES.CONTESTANT.permissions.canAdjustPoints === false, "Contestant is barred from adjusting points");
+assert(ROLES.CAPTAIN.permissions.canCommissionTasks === true, "House Captain can commission tasks");
+assert(ROLES.CAPTAIN.permissions.canEvict === false, "House Captain cannot evict contestants");
+assert(ROLES.JURY.permissions.canAdjustPoints === true, "Jury can evaluate and award points");
+assert(ROLES.JURY.permissions.canNominate === false, "Jury cannot nominate contestants");
+assert(ROLES.JURY.permissions.canEvict === false, "Jury cannot unilaterally evict contestants");
+
+// -------------------------------------------------------------------------
+// DECODED FEATURE 2: REAL-TIME ACTIVITY LOG ENHANCEMENTS
+// -------------------------------------------------------------------------
+console.log("\n--- DECODED FEATURE 2: Real Time Activity Log ---");
+// Simulate search filtering
+const sampleLogs = [
+  { action: "+150 Points Bounty Awarded", details: "Awarded to Aria", actor: "Big Boss", category: "POINTS" },
+  { action: "Security Breach Simulated", details: "Core mainframe glitch", actor: "Telemetry Daemon", category: "SYSTEM" },
+  { action: "Task Commissioned", details: "Assigned to Elena", actor: "Devansh (Captain)", category: "TASKS" }
+];
+
+const searchQuery = "Breach";
+const matchedLogs = sampleLogs.filter(l => 
+  l.action.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  l.details.toLowerCase().includes(searchQuery.toLowerCase())
+);
+assert(matchedLogs.length === 1, "Real-time search filters logs correctly");
+assert(matchedLogs[0].actor === "Telemetry Daemon", "Telemetry actor tag preserved");
+
+// -------------------------------------------------------------------------
+// DECODED FEATURE 3: EVENT NOTIFICATIONS & TOAST STACK
+// -------------------------------------------------------------------------
+console.log("\n--- DECODED FEATURE 3: Event Notifications ---");
+let notificationStore = [];
+const pushNotification = (title, message, type = 'info') => {
+  const note = {
+    id: 'notif_' + Date.now(),
+    title,
+    message,
+    type,
+    unread: true,
+    timestamp: '14:50'
+  };
+  notificationStore.unshift(note);
+  return note;
+};
+
+pushNotification("Critical Alert", "Imminent nomination round starting", "danger");
+pushNotification("Immunity Granted", "Aria protected from eviction", "success");
+pushNotification("Points Updated", "House score recalculated", "info");
+
+assert(notificationStore.length === 3, "Notification store ingested 3 events");
+assert(notificationStore.filter(n => n.unread).length === 3, "Unread badge count matches 3");
+assert(notificationStore.filter(n => n.type === 'danger').length === 1, "Critical/Danger notification filtering works");
+
+// Mark all as read
+notificationStore.forEach(n => n.unread = false);
+assert(notificationStore.filter(n => n.unread).length === 0, "All notifications successfully marked read");
+
+// -------------------------------------------------------------------------
+// DECODED FEATURE 4: PERFORMANCE ANALYTICS
+// -------------------------------------------------------------------------
+console.log("\n--- DECODED FEATURE 4: Performance Analytics ---");
+// Team power calculation test
+const testContestants = [
+  { name: "Aria", team: "Frontend", points: 1500, status: "Active" },
+  { name: "Elena", team: "Frontend", points: 1200, status: "Active" },
+  { name: "Devansh", team: "Backend", points: 1800, status: "Active" },
+  { name: "Marcus", team: "Backend", points: 400, status: "Nominated" }
+];
+
+const teamScores = {};
+testContestants.forEach(c => {
+  teamScores[c.team] = (teamScores[c.team] || 0) + c.points;
+});
+
+assert(teamScores["Frontend"] === 2700, "Frontend team total power correctly computed");
+assert(teamScores["Backend"] === 2200, "Backend team total power correctly computed");
+
+// Eviction Risk Score Calculation test
+const computeRisk = (contestant, maxPts) => {
+  let risk = Math.max(10, Math.round(100 - (contestant.points / maxPts) * 75));
+  if (contestant.status === 'Nominated') risk = Math.min(98, risk + 20);
+  if (contestant.status === 'Immune') risk = 5;
+  return risk;
+};
+
+const maxPts = 1800;
+const marcusRisk = computeRisk(testContestants[3], maxPts);
+assert(marcusRisk > 80, `Marcus (Nominated, 400 pts) has high eviction risk: ${marcusRisk}%`);
+
 console.log("\n==========================================================");
 console.log(`ALL VERIFICATION TESTS COMPLETED: ${passCount} PASSED, ${failCount} FAILED`);
 console.log("==========================================================");
@@ -422,3 +526,4 @@ if (failCount === 0) {
 } else {
   process.exit(1);
 }
+

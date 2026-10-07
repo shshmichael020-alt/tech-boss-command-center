@@ -8,6 +8,8 @@ import TaskManagement from './components/TaskManagement';
 import DangerZone from './components/DangerZone';
 import TaskTimer from './components/TaskTimer';
 import HouseStats from './components/HouseStats';
+import PerformanceAnalytics from './components/PerformanceAnalytics';
+import NotificationCenter, { ToastStack } from './components/NotificationCenter';
 import BroadcastBanner from './components/BroadcastBanner';
 import PointModal from './components/PointModal';
 import ContestantModal from './components/ContestantModal';
@@ -20,6 +22,7 @@ import {
   INITIAL_TASKS, 
   INITIAL_ANNOUNCEMENTS 
 } from './data/initialData';
+import { ROLES } from './data/roles';
 import { soundManager } from './utils/audio';
 
 // Safe localStorage loaders
@@ -69,17 +72,33 @@ export default function App() {
     loadStorage('bigboss_tasks', INITIAL_TASKS)
   );
 
+  // FEATURE 1 (New): Role Based Access Control
+  const [currentRole, setCurrentRole] = useState(() => 
+    loadStorageString('bigboss_role', 'BIG_BOSS')
+  );
+
+  // FEATURE 3 (New): Event Notification System
+  const [notifications, setNotifications] = useState(() => 
+    loadStorage('bigboss_notifications', [
+      { id: 'n1', title: 'Surveillance Active', message: 'Big Boss Command Center initialized for Day 22.', type: 'info', source: 'Control Room', timestamp: '08:00', read: true },
+      { id: 'n2', title: 'Captaincy Sworn', message: 'Aria Stark crowned reigning House Captain.', type: 'success', source: 'Big Boss', timestamp: '19:30', read: true },
+      { id: 'n3', title: 'Danger Zone Alert', message: 'Vikram, Marcus, and Chloe in immediate eviction jeopardy.', type: 'danger', source: 'Nominations', timestamp: '16:00', read: false }
+    ])
+  );
+  const [toasts, setToasts] = useState([]);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+
   // Announcements state
   const [announcements, setAnnouncements] = useState(() => 
     loadStorage('bigboss_announcements', INITIAL_ANNOUNCEMENTS)
   );
 
-  // FEATURE 3: Activity audit log with categories
+  // FEATURE 2 (New): Real Time Activity audit log with categories & actors
   const [activityLogs, setActivityLogs] = useState(() => 
     loadStorage('bigboss_logs', [
-      { id: 'l1', action: 'System online: Tech House Command Center operational', details: 'All surveillance telemetry active', category: 'SYSTEM', timestamp: 'Day 22, 08:00' },
-      { id: 'l2', action: 'Captaincy conferred upon Aria Stark', details: 'Aria Stark sworn in as House Captain', category: 'CAPTAINCY', timestamp: 'Day 21, 19:30' },
-      { id: 'l3', action: 'Danger Zone activated with 3 nominees', details: 'Vikram, Marcus and Chloe on the block', category: 'NOMINATIONS', timestamp: 'Day 21, 16:00' },
+      { id: 'l1', action: 'System online: Tech House Command Center operational', details: 'All surveillance telemetry active', category: 'SYSTEM', actor: 'System Auto', timestamp: 'Day 22, 08:00:00' },
+      { id: 'l2', action: 'Captaincy conferred upon Aria Stark', details: 'Aria Stark sworn in as House Captain', category: 'CAPTAINCY', actor: 'Big Boss', timestamp: 'Day 21, 19:30:00' },
+      { id: 'l3', action: 'Danger Zone activated with 3 nominees', details: 'Vikram, Marcus and Chloe on the block', category: 'NOMINATIONS', actor: 'Surveillance AI', timestamp: 'Day 21, 16:00:00' },
     ])
   );
 
@@ -100,6 +119,18 @@ export default function App() {
   const [latestAnnouncementOverlay, setLatestAnnouncementOverlay] = useState(null);
 
   // Sync state to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('bigboss_role', currentRole);
+    } catch (e) { console.warn(e); }
+  }, [currentRole]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bigboss_notifications', JSON.stringify(notifications));
+    } catch (e) { console.warn(e); }
+  }, [notifications]);
+
   useEffect(() => {
     try {
       localStorage.setItem('bigboss_phase', housePhase);
@@ -136,16 +167,58 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Helper: Log House Activity
-  const logActivity = (action, details = '', category = 'SYSTEM') => {
+  // Helper: Event Notification & Floating Toast
+  const addNotification = ({ title, message, type = 'info', source = 'Surveillance' }) => {
+    const id = 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const newNotif = {
+      id,
+      title,
+      message,
+      type,
+      source,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      read: false
+    };
+
+    setNotifications(prev => [newNotif, ...prev.slice(0, 49)]);
+    setToasts(prev => [...prev.slice(-3), { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+
+    if (type === 'danger') soundManager.playAlert();
+    else if (type === 'success') soundManager.playSuccess();
+    else if (type === 'warning') soundManager.playGong();
+  };
+
+  // Helper: RBAC Permission Verification
+  const checkPermission = (actionName, permissionKey) => {
+    const roleConfig = ROLES[currentRole] || ROLES.BIG_BOSS;
+    if (!roleConfig.permissions[permissionKey]) {
+      soundManager.playAlert();
+      addNotification({
+        title: 'ACCESS RESTRICTED (RBAC)',
+        message: `Action "${actionName}" denied for role [${roleConfig.name}]. Switch to Big Boss or authorized authority.`,
+        type: 'danger',
+        source: 'Security Grid'
+      });
+      showToast(`Denied: Role [${roleConfig.name}] lacks permission for ${actionName}`, true);
+      return false;
+    }
+    return true;
+  };
+
+  // Helper: Log House Activity (Enhanced with Actor & Real-time timestamp)
+  const logActivity = (action, details = '', category = 'SYSTEM', actor = 'Big Boss') => {
     const newLog = {
       id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       action,
       details,
       category,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      actor,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     };
-    setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]); // keep last 50
+    setActivityLogs(prev => [newLog, ...prev.slice(0, 99)]); // keep last 100
   };
 
   // Helper: Push state snapshot onto Undo History
@@ -163,8 +236,108 @@ export default function App() {
     ]);
   };
 
+  // FEATURE 1 (New): Role Switch Handler
+  const handleRoleChange = (newRoleId) => {
+    const targetRole = ROLES[newRoleId];
+    if (!targetRole) return;
+    setCurrentRole(newRoleId);
+    soundManager.playClick();
+    logActivity(`Access Role Switched`, `Operative is now authenticated as [${targetRole.name}]`, 'SECURITY', targetRole.name);
+    addNotification({
+      title: 'ACCESS ROLE SWITCHED',
+      message: `Operating authorization set to [${targetRole.name}] (${targetRole.shortTitle}).`,
+      type: 'info',
+      source: 'RBAC Security'
+    });
+    showToast(`Active Role: [ ${targetRole.name} ]`);
+  };
+
+  // FEATURE 2 (New): Simulate Incident
+  const handleSimulateIncident = () => {
+    if (!checkPermission('Simulate Incident', 'canSimulateIncident')) return;
+    const incidents = [
+      { action: 'Surveillance Alert: Unauthorized whisper in Pantry', details: 'Aria and Devansh discussing secret voting pact', cat: 'SECURITY', actor: 'Surveillance AI', type: 'warning' },
+      { action: 'Rule Violation: Microphones covered near Pool', details: 'Penalty warning issued to Cyber Sentinel team', cat: 'SECURITY', actor: 'Big Boss', type: 'danger' },
+      { action: 'House Matrix: Bounty Hack detected in Mainframe', details: 'Marcus attempted unauthorized point spoofing', cat: 'SYSTEM', actor: 'Security Grid', type: 'danger' },
+      { action: 'Confession Room summons issued', details: 'House Captain summoned for secret nominations discussion', cat: 'CAPTAINCY', actor: 'Big Boss', type: 'info' },
+      { action: 'Emergency Siren: Flash House Meeting ordered', details: 'All housemates assemble at Living Room podium immediately', cat: 'SYSTEM', actor: 'Control Room', type: 'warning' },
+      { action: 'Alliance Detected: Quantum Core & Cloud Forge pact', details: 'Collaborative strategy identified in Garden area', cat: 'SECURITY', actor: 'Surveillance AI', type: 'info' }
+    ];
+
+    const inc = incidents[Math.floor(Math.random() * incidents.length)];
+    logActivity(inc.action, inc.details, inc.cat, inc.actor);
+    addNotification({
+      title: inc.action,
+      message: inc.details,
+      type: inc.type,
+      source: inc.actor
+    });
+  };
+
+  // Clear Activity Logs
+  const handleClearLogs = () => {
+    if (!checkPermission('Clear Logs', 'canResetData')) return;
+    pushHistory('Clear Telemetry Logs', 'SYSTEM');
+    setActivityLogs([]);
+    addNotification({
+      title: 'Telemetry Cleared',
+      message: 'Surveillance audit log reset by Big Boss.',
+      type: 'info',
+      source: 'Control Room'
+    });
+    showToast('Activity logs cleared');
+  };
+
+  // Notification Center Handlers
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    soundManager.playSuccess();
+  };
+
+  const handleClearAllNotifications = () => {
+    setNotifications([]);
+    soundManager.playClick();
+  };
+
+  const handleTriggerSimulatedNotification = (type) => {
+    switch (type) {
+      case 'siren':
+        addNotification({
+          title: '🚨 EMERGENCY HOUSE SIREN',
+          message: 'Big Boss has sounded the House siren. All housemates must freeze immediately!',
+          type: 'danger',
+          source: 'Big Boss'
+        });
+        break;
+      case 'task':
+        addNotification({
+          title: '📋 TASK DIRECTIVE TRANSMISSION',
+          message: 'New high-stakes task commissioned in Tasks HQ. Bounty clock running.',
+          type: 'warning',
+          source: 'Tasks Master'
+        });
+        break;
+      case 'captain':
+        addNotification({
+          title: '👑 CAPTAINCY SUMMONS',
+          message: 'House Captain is summoned to the Confession Room for secret nominations review.',
+          type: 'info',
+          source: 'House Captain'
+        });
+        break;
+      default:
+        addNotification({
+          title: 'HOUSE NOTICE',
+          message: 'Daily routine schedule updated.',
+          type: 'info',
+          source: 'House Control'
+        });
+    }
+  };
+
   // FEATURE 2: Undo Last Action handler
   const handleUndo = () => {
+    if (!checkPermission('Undo Action', 'canUndo')) return;
     if (history.length === 0) return;
     const [lastSnapshot, ...remainingHistory] = history;
     if (!lastSnapshot) return;
@@ -178,17 +351,30 @@ export default function App() {
 
     soundManager.playSuccess();
     showToast(`Undo: Reverted "${lastSnapshot.label}"`);
-    logActivity(`UNDO ACTION`, `Reverted "${lastSnapshot.label}"`, 'SYSTEM');
+    logActivity(`UNDO ACTION`, `Reverted "${lastSnapshot.label}"`, 'SYSTEM', 'Big Boss');
+    addNotification({
+      title: 'Action Undone',
+      message: `Reverted "${lastSnapshot.label}" safely.`,
+      type: 'info',
+      source: 'Undo Safety Engine'
+    });
   };
 
   // FEATURE 1: Phase change handler
   const handlePhaseChange = (newPhase) => {
     if (newPhase === housePhase) return;
+    if (!checkPermission('Change House Phase', 'canChangePhase')) return;
     pushHistory(`House Phase changed to ${newPhase}`, 'SYSTEM');
     const oldPhase = housePhase;
     setHousePhase(newPhase);
     soundManager.playGong();
-    logActivity(`House Phase changed`, `${oldPhase} → ${newPhase}`, 'SYSTEM');
+    logActivity(`House Phase changed`, `${oldPhase} → ${newPhase}`, 'SYSTEM', 'Big Boss');
+    addNotification({
+      title: 'House Phase Transition',
+      message: `The Tech House has moved to phase [ ${newPhase} ].`,
+      type: 'info',
+      source: 'Big Boss'
+    });
     showToast(`Current House Phase: [ ${newPhase} ]`);
   };
 
@@ -202,6 +388,7 @@ export default function App() {
 
   // Points Add / Deduct (Prevents NaN/undefined/negative values)
   const handleAdjustPoints = (contestantId, amount, reason) => {
+    if (!checkPermission('Adjust Points', 'canAdjustPoints')) return;
     const numAmount = Math.round(Number(amount));
     if (isNaN(numAmount) || numAmount === 0) return;
 
@@ -220,7 +407,14 @@ export default function App() {
       return c;
     }));
 
-    logActivity(`Points Transaction: ${sign} PTS to ${target ? target.name : contestantId}`, `Reason: ${reason}`, 'POINTS');
+    const actor = ROLES[currentRole]?.name || 'Big Boss';
+    logActivity(`Points Transaction: ${sign} PTS to ${target ? target.name : contestantId}`, `Reason: ${reason}`, 'POINTS', actor);
+    addNotification({
+      title: 'Points Transaction',
+      message: `${sign} PTS awarded to ${target ? target.name.split(' ')[0] : 'Contestant'} (${reason || 'Rule update'}).`,
+      type: numAmount > 0 ? 'success' : 'warning',
+      source: actor
+    });
   };
 
   const handleQuickPoints = (contestantId, amount, reason = 'Quick adjustment') => {
@@ -234,6 +428,7 @@ export default function App() {
 
   // Captaincy Assignment (Only 1 Captain, previous captain loses status, new captain gets immunity)
   const handleAssignCaptain = (newCaptainId) => {
+    if (!checkPermission('Assign Captain', 'canAssignCaptain')) return;
     const newCap = contestants.find(c => c.id === newCaptainId);
     if (!newCap) return;
 
@@ -270,6 +465,7 @@ export default function App() {
 
   // Immunity Toggle (If granted to nominated contestant, automatically removes them from Danger Zone)
   const handleToggleImmunity = (contestantId) => {
+    if (!checkPermission('Grant/Revoke Immunity', 'canGrantImmunity')) return;
     const target = contestants.find(c => c.id === contestantId);
     if (!target || target.status === 'Evicted') return;
 
@@ -301,18 +497,25 @@ export default function App() {
     }));
 
     const statusText = !target.isImmune ? 'GRANTED' : 'REVOKED';
-    logActivity(`Immunity Protocol: ${statusText} for ${target.name}`, '', 'IMMUNITY');
+    logActivity(`Immunity Protocol: ${statusText} for ${target.name}`, '', 'IMMUNITY', 'House Rules');
+    addNotification({
+      title: 'Immunity Protocol',
+      message: `Immunity shield ${statusText.toLowerCase()} for ${target.name.split(' ')[0]}.`,
+      type: 'info',
+      source: 'House Rules'
+    });
   };
 
   // Nomination Toggle (Strict validation: immune, captain, or evicted CANNOT be nominated)
   const handleToggleNomination = (contestantId, reason = '') => {
+    if (!checkPermission('Toggle Nomination', 'canNominate')) return;
     const target = contestants.find(c => c.id === contestantId);
     if (!target) return;
 
     // Strict guard against nominating immune / captain / evicted
     if (target.status !== 'Nominated') {
       if (target.isImmune || target.isCaptain || target.status === 'Evicted') {
-        logActivity(`Nomination Blocked`, `${target.name} has immunity shield / captaincy and cannot be nominated.`, 'NOMINATIONS');
+        logActivity(`Nomination Blocked`, `${target.name} has immunity shield / captaincy and cannot be nominated.`, 'NOMINATIONS', 'House Rules');
         return;
       }
     }
@@ -333,15 +536,24 @@ export default function App() {
       return c;
     }));
 
+    const actor = ROLES[currentRole]?.name || 'Big Boss';
     logActivity(
       isNom ? `Pardoned from Danger Zone: ${target.name}` : `Nominated to Danger Zone: ${target.name}`,
       reason || '',
-      'NOMINATIONS'
+      'NOMINATIONS',
+      actor
     );
+    addNotification({
+      title: 'Danger Zone Updated',
+      message: isNom ? `${target.name} pardoned from Danger Zone.` : `${target.name} placed on the eviction block!`,
+      type: 'warning',
+      source: actor
+    });
   };
 
   // Eviction Execution (Removes from active house & leaderboard, clears immunity & captaincy)
   const handleConfirmEviction = (contestantId, reason) => {
+    if (!checkPermission('Evict Contestant', 'canEvict')) return;
     const target = contestants.find(c => c.id === contestantId);
     if (!target) return;
 
@@ -365,11 +577,18 @@ export default function App() {
 
     const decree = `EVICTION VERDICT: ${target.name} has been formally evicted from the Tech House.`;
     handleAddAnnouncement(decree, 'danger');
-    logActivity(`CONTESTANT EVICTED: ${target.name}`, `Reason: ${reason}`, 'EVICTIONS');
+    logActivity(`CONTESTANT EVICTED: ${target.name}`, `Reason: ${reason}`, 'EVICTIONS', 'Big Boss');
+    addNotification({
+      title: '🚨 EVICTION EXECUTION',
+      message: `${target.name} has been permanently evicted from the Tech House.`,
+      type: 'danger',
+      source: 'Big Boss Verdict'
+    });
   };
 
   // Wildcard Revive Evicted Contestant
   const handleReviveContestant = (contestantId) => {
+    if (!checkPermission('Revive Contestant', 'canEvict')) return;
     const target = contestants.find(c => c.id === contestantId);
     if (!target) return;
 
@@ -389,15 +608,28 @@ export default function App() {
 
     soundManager.playSuccess();
     handleAddAnnouncement(`WILDCARD RETURN: ${target.name} has re-entered the Tech House!`, 'alert');
-    logActivity(`Wildcard Entry Reinstated: ${target.name}`, '', 'EVICTIONS');
+    logActivity(`Wildcard Entry Reinstated: ${target.name}`, '', 'EVICTIONS', 'Big Boss');
+    addNotification({
+      title: 'Wildcard Re-entry',
+      message: `${target.name} has re-entered the Tech House with active standing!`,
+      type: 'success',
+      source: 'Big Boss'
+    });
   };
 
   // Add or Edit Contestant
   const handleSaveContestant = (data) => {
+    if (!checkPermission('Modify Contestant', 'canEditContestants')) return;
     if (editingContestant) {
       pushHistory(`Modified ${data.name.split(' ')[0]}`, 'SYSTEM');
       setContestants(prev => prev.map(c => c.id === data.id ? { ...c, ...data, points: Math.max(0, Number(data.points) || 0) } : c));
-      logActivity(`Contestant Profile Modified: ${data.name}`, '', 'SYSTEM');
+      logActivity(`Contestant Profile Modified: ${data.name}`, '', 'SYSTEM', 'Big Boss');
+      addNotification({
+        title: 'Profile Updated',
+        message: `${data.name} profile credentials updated.`,
+        type: 'info',
+        source: 'Contestant Registry'
+      });
     } else {
       pushHistory(`Enlisted ${data.name.split(' ')[0]}`, 'SYSTEM');
       const validatedData = {
@@ -405,7 +637,13 @@ export default function App() {
         points: Math.max(0, Number(data.points) || 0)
       };
       setContestants(prev => [validatedData, ...prev]);
-      logActivity(`New Contestant Enlisted: ${data.name} (${data.team})`, '', 'SYSTEM');
+      logActivity(`New Contestant Enlisted: ${data.name} (${data.team})`, '', 'SYSTEM', 'Big Boss');
+      addNotification({
+        title: 'Contestant Enlisted',
+        message: `${data.name} enrolled in ${data.team}.`,
+        type: 'success',
+        source: 'Big Boss'
+      });
       soundManager.playSuccess();
     }
     setEditingContestant(null);
@@ -454,7 +692,14 @@ export default function App() {
       }));
     }
 
-    logActivity(`Task Completed: "${targetTask.title}"`, `+${rewardPts} PTS awarded to ${targetTask.assignedTo}`, 'TASKS');
+    const actor = ROLES[currentRole]?.name || 'Big Boss';
+    logActivity(`Task Completed: "${targetTask.title}"`, `+${rewardPts} PTS awarded to ${targetTask.assignedTo}`, 'TASKS', actor);
+    addNotification({
+      title: 'Task Bounty Credited',
+      message: `Directive "${targetTask.title}" completed! +${rewardPts} PTS awarded to ${targetTask.assignedTo}.`,
+      type: 'success',
+      source: actor
+    });
   };
 
   const handleFailTask = (taskId) => {
@@ -470,23 +715,32 @@ export default function App() {
       return t;
     }));
 
-    logActivity(`Task Failed: "${targetTask.title}" by ${targetTask.assignedTo}`, '', 'TASKS');
+    logActivity(`Task Failed: "${targetTask.title}" by ${targetTask.assignedTo}`, '', 'TASKS', 'Tasks HQ');
   };
 
   const handleDeleteTask = (taskId) => {
+    if (!checkPermission('Delete Task', 'canCommissionTasks')) return;
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return;
 
     pushHistory(`Deleted task "${targetTask.title}"`, 'TASKS');
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    logActivity(`Task Record Deleted: "${targetTask.title}"`, '', 'TASKS');
+    logActivity(`Task Record Deleted: "${targetTask.title}"`, '', 'TASKS', 'Tasks HQ');
   };
 
   const handleAddTask = (newTask) => {
+    if (!checkPermission('Commission Task', 'canCommissionTasks')) return;
     pushHistory(`Commissioned task "${newTask.title}"`, 'TASKS');
     setTasks(prev => [newTask, ...prev]);
     soundManager.playSuccess();
-    logActivity(`New Directive Dispatched: "${newTask.title}" for ${newTask.assignedTo}`, '', 'TASKS');
+    const actor = ROLES[currentRole]?.name || 'Big Boss';
+    logActivity(`New Directive Dispatched: "${newTask.title}" for ${newTask.assignedTo}`, '', 'TASKS', actor);
+    addNotification({
+      title: 'Task Commissioned',
+      message: `New task "${newTask.title}" (${newTask.points} pts) assigned to ${newTask.assignedTo}.`,
+      type: 'info',
+      source: actor
+    });
   };
 
   // Announcements (Rejects empty / whitespace)
@@ -503,6 +757,13 @@ export default function App() {
     };
     setAnnouncements(prev => [item, ...prev]);
     setLatestAnnouncementOverlay(item);
+
+    addNotification({
+      title: '📢 Big Boss Announcement',
+      message: cleanMessage,
+      type: type === 'danger' ? 'danger' : 'info',
+      source: 'Big Boss Voice'
+    });
     logActivity(`Announcement Broadcast: "${cleanMessage}"`, '', 'SYSTEM');
   };
 
@@ -568,6 +829,10 @@ export default function App() {
         onUndo={handleUndo}
         undoCount={history.length}
         lastUndoAction={history[0]?.label || ''}
+        currentRole={currentRole}
+        onRoleChange={handleRoleChange}
+        onOpenNotifications={() => setIsNotificationCenterOpen(true)}
+        unreadNotificationCount={notifications.filter(n => !n.read).length}
       />
 
       {/* Navigation Tabs */}
@@ -685,7 +950,7 @@ export default function App() {
           <TaskTimer
             onAnnounceTimerDone={(msg) => {
               handleAddAnnouncement(msg, 'danger');
-              logActivity('Timer Notification', msg, 'SYSTEM');
+              logActivity('Timer Notification', msg, 'SYSTEM', 'Timer Master');
             }}
           />
         </div>
@@ -697,6 +962,18 @@ export default function App() {
             captain={captain}
             activityLogs={activityLogs}
             onResetData={handleResetData}
+            onSimulateIncident={handleSimulateIncident}
+            onClearLogs={handleClearLogs}
+            currentRole={currentRole}
+          />
+        )}
+
+        {activeTab === 'analytics' && (
+          <PerformanceAnalytics
+            contestants={contestants}
+            tasks={tasks}
+            housePhase={housePhase}
+            chaosIndex={68}
           />
         )}
       </main>
@@ -710,6 +987,23 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Floating Toast Notification Stack */}
+      <ToastStack
+        toasts={toasts}
+        onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
+      />
+
+      {/* Event Notification Center Drawer */}
+      <NotificationCenter
+        isOpen={isNotificationCenterOpen}
+        onClose={() => setIsNotificationCenterOpen(false)}
+        notifications={notifications}
+        onClearAll={handleClearAllNotifications}
+        onMarkAllAsRead={handleMarkAllNotificationsRead}
+        onTriggerSimulatedNotification={handleTriggerSimulatedNotification}
+        unreadCount={notifications.filter(n => !n.read).length}
+      />
 
       {/* Modals & Dialogs */}
       <PointModal
