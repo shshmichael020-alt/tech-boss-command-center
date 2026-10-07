@@ -24,10 +24,12 @@ export default function Leaderboard({
   // Filter contestants
   const displayedContestants = contestants.filter(c => includeEvicted || c.status !== 'Evicted');
   
-  // Sort by points descending
-  const sorted = [...displayedContestants].sort((a, b) => b.points - a.points);
+  // Sort by points descending with deterministic tie-breaker
+  const sorted = [...displayedContestants].sort((a, b) => 
+    ((Number(b.points) || 0) - (Number(a.points) || 0)) || a.name.localeCompare(b.name)
+  );
   
-  const maxPoints = sorted[0]?.points || 2000;
+  const maxPoints = Math.max(1, Number(sorted[0]?.points) || 1000);
   const top1 = sorted[0];
   const top2 = sorted[1];
   const top3 = sorted[2];
@@ -85,8 +87,8 @@ export default function Leaderboard({
         </div>
       </div>
 
-      {/* Podium for Top 3 */}
-      {sorted.length >= 3 && (
+      {/* Podium for Top Contenders */}
+      {sorted.length >= 1 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
           
           {/* 2nd Place */}

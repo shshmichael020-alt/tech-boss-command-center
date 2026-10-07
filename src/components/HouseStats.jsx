@@ -90,8 +90,8 @@ export default function HouseStats({
         <div className="bg-gradient-to-b from-[#1f190b] to-[#0e1424] border border-amber-500/50 rounded-2xl p-4 shadow-lg flex items-center space-x-3.5">
           <div className="relative">
             <img
-              src={highestScorer?.avatar}
-              alt={highestScorer?.name}
+              src={highestScorer?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+              alt={highestScorer?.name || 'Contestant'}
               className="w-14 h-14 rounded-xl object-cover border-2 border-amber-400"
             />
             <div className="absolute -top-1.5 -right-1.5 bg-amber-500 text-black p-0.5 rounded-full">
@@ -100,8 +100,8 @@ export default function HouseStats({
           </div>
           <div className="truncate">
             <span className="text-[10px] font-mono uppercase text-amber-400 font-bold block">MVP OF THE HOUSE</span>
-            <div className="font-chakra font-bold text-white text-base truncate">{highestScorer?.name}</div>
-            <div className="text-xs font-mono text-amber-300 font-black">{highestScorer?.points} PTS</div>
+            <div className="font-chakra font-bold text-white text-base truncate">{highestScorer?.name || 'None Active'}</div>
+            <div className="text-xs font-mono text-amber-300 font-black">{highestScorer ? `${highestScorer.points} PTS` : '0 PTS'}</div>
           </div>
         </div>
 
@@ -109,8 +109,8 @@ export default function HouseStats({
         <div className="bg-gradient-to-b from-[#1c0c11] to-[#0e1424] border border-red-500/50 rounded-2xl p-4 shadow-lg flex items-center space-x-3.5">
           <div className="relative">
             <img
-              src={lowestScorer?.avatar}
-              alt={lowestScorer?.name}
+              src={lowestScorer?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'}
+              alt={lowestScorer?.name || 'Contestant'}
               className="w-14 h-14 rounded-xl object-cover border-2 border-red-500"
             />
             <div className="absolute -top-1.5 -right-1.5 bg-red-600 text-white p-0.5 rounded-full">
@@ -119,8 +119,8 @@ export default function HouseStats({
           </div>
           <div className="truncate">
             <span className="text-[10px] font-mono uppercase text-red-400 font-bold block">LOWEST HOUSE SCORE</span>
-            <div className="font-chakra font-bold text-white text-base truncate">{lowestScorer?.name}</div>
-            <div className="text-xs font-mono text-red-300 font-black">{lowestScorer?.points} PTS</div>
+            <div className="font-chakra font-bold text-white text-base truncate">{lowestScorer?.name || 'None Active'}</div>
+            <div className="text-xs font-mono text-red-300 font-black">{lowestScorer ? `${lowestScorer.points} PTS` : '0 PTS'}</div>
           </div>
         </div>
 

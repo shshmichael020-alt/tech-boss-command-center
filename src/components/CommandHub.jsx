@@ -32,8 +32,8 @@ export default function CommandHub({
   const activeContestants = contestants.filter(c => c.status !== 'Evicted');
   const nominatedContestants = contestants.filter(c => c.status === 'Nominated');
   const activeTasks = tasks.filter(t => t.status === 'Pending' || t.status === 'In Progress');
-  const topContestant = [...activeContestants].sort((a, b) => b.points - a.points)[0];
-  const totalPoints = activeContestants.reduce((acc, c) => acc + c.points, 0);
+  const topContestant = [...activeContestants].sort((a, b) => ((Number(b.points) || 0) - (Number(a.points) || 0)) || a.name.localeCompare(b.name))[0];
+  const totalPoints = activeContestants.reduce((acc, c) => acc + (Number(c.points) || 0), 0);
 
   return (
     <div className="space-y-6 animate-fade-in">

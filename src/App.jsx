@@ -22,37 +22,46 @@ import {
 } from './data/initialData';
 import { soundManager } from './utils/audio';
 
+// Safe localStorage loader
+const loadStorage = (key, fallback) => {
+  try {
+    const item = localStorage.getItem(key);
+    if (!item) return fallback;
+    const parsed = JSON.parse(item);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : fallback;
+  } catch (err) {
+    console.warn(`Error loading ${key} from storage, using fallback`, err);
+    return fallback;
+  }
+};
+
 export default function App() {
   // Navigation active tab: 'hub' | 'contestants' | 'leaderboard' | 'tasks' | 'danger' | 'timer' | 'stats'
   const [activeTab, setActiveTab] = useState('hub');
 
-  // Contestants state (with LocalStorage fallback)
-  const [contestants, setContestants] = useState(() => {
-    const saved = localStorage.getItem('bigboss_contestants');
-    return saved ? JSON.parse(saved) : INITIAL_CONTESTANTS;
-  });
+  // Contestants state (with safe LocalStorage fallback)
+  const [contestants, setContestants] = useState(() => 
+    loadStorage('bigboss_contestants', INITIAL_CONTESTANTS)
+  );
 
   // Tasks state
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('bigboss_tasks');
-    return saved ? JSON.parse(saved) : INITIAL_TASKS;
-  });
+  const [tasks, setTasks] = useState(() => 
+    loadStorage('bigboss_tasks', INITIAL_TASKS)
+  );
 
   // Announcements state
-  const [announcements, setAnnouncements] = useState(() => {
-    const saved = localStorage.getItem('bigboss_announcements');
-    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
-  });
+  const [announcements, setAnnouncements] = useState(() => 
+    loadStorage('bigboss_announcements', INITIAL_ANNOUNCEMENTS)
+  );
 
   // Activity audit log
-  const [activityLogs, setActivityLogs] = useState(() => {
-    const saved = localStorage.getItem('bigboss_logs');
-    return saved ? JSON.parse(saved) : [
+  const [activityLogs, setActivityLogs] = useState(() => 
+    loadStorage('bigboss_logs', [
       { id: 'l1', action: 'System online: Tech House Command Center operational', timestamp: 'Day 22, 08:00' },
       { id: 'l2', action: 'Captaincy conferred upon Aria Stark', timestamp: 'Day 21, 19:30' },
       { id: 'l3', action: 'Danger Zone activated with 3 nominees', timestamp: 'Day 21, 16:00' },
-    ];
-  });
+    ])
+  );
 
   // Modals state
   const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
@@ -72,19 +81,27 @@ export default function App() {
 
   // Sync state to LocalStorage
   useEffect(() => {
-    localStorage.setItem('bigboss_contestants', JSON.stringify(contestants));
+    try {
+      localStorage.setItem('bigboss_contestants', JSON.stringify(contestants));
+    } catch (e) { console.warn(e); }
   }, [contestants]);
 
   useEffect(() => {
-    localStorage.setItem('bigboss_tasks', JSON.stringify(tasks));
+    try {
+      localStorage.setItem('bigboss_tasks', JSON.stringify(tasks));
+    } catch (e) { console.warn(e); }
   }, [tasks]);
 
   useEffect(() => {
-    localStorage.setItem('bigboss_announcements', JSON.stringify(announcements));
+    try {
+      localStorage.setItem('bigboss_announcements', JSON.stringify(announcements));
+    } catch (e) { console.warn(e); }
   }, [announcements]);
 
   useEffect(() => {
-    localStorage.setItem('bigboss_logs', JSON.stringify(activityLogs));
+    try {
+      localStorage.setItem('bigboss_logs', JSON.stringify(activityLogs));
+    } catch (e) { console.warn(e); }
   }, [activityLogs]);
 
   // Helper: Log House Activity
@@ -98,7 +115,7 @@ export default function App() {
     setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]); // keep last 50
   };
 
-  // House Captain
+  // Derived Single Source of Truth
   const captain = contestants.find(c => c.isCaptain && c.status !== 'Evicted');
   const dangerCount = contestants.filter(c => c.status === 'Nominated').length;
 
@@ -106,18 +123,22 @@ export default function App() {
   // ACTION HANDLERS
   // ----------------------------------------------------
 
-  // Points Add / Deduct
+  // Points Add / Deduct (Prevents NaN/undefined/negative values)
   const handleAdjustPoints = (contestantId, amount, reason) => {
+    const numAmount = Math.round(Number(amount));
+    if (isNaN(numAmount) || numAmount === 0) return;
+
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
-        const updatedPoints = Math.max(0, c.points + amount);
+        const currentPoints = Number(c.points) || 0;
+        const updatedPoints = Math.max(0, currentPoints + numAmount);
         return { ...c, points: updatedPoints };
       }
       return c;
     }));
 
     const target = contestants.find(c => c.id === contestantId);
-    const sign = amount > 0 ? `+${amount}` : `${amount}`;
+    const sign = numAmount > 0 ? `+${numAmount}` : `${numAmount}`;
     logActivity(`Points Transaction: ${sign} PTS to ${target ? target.name : contestantId}`, `Reason: ${reason}`);
   };
 
@@ -130,7 +151,7 @@ export default function App() {
     }
   };
 
-  // Captaincy Assignment
+  // Captaincy Assignment (Only 1 Captain, previous captain loses status, new captain gets immunity)
   const handleAssignCaptain = (newCaptainId) => {
     setContestants(prev => prev.map(c => {
       if (c.id === newCaptainId) {
@@ -138,16 +159,17 @@ export default function App() {
           ...c,
           status: 'Captain',
           isCaptain: true,
-          isImmune: true, // Captain gets immunity!
+          isImmune: true,
+          dangerZoneVotes: 0,
+          nominationReason: null
         };
       }
       if (c.isCaptain) {
-        // Step down previous captain
+        // Step down previous captain cleanly
         return {
           ...c,
           status: 'Active',
           isCaptain: false,
-          // note: previous captain retains immunity only if they had another reason, reset here to active
           isImmune: false,
         };
       }
@@ -162,17 +184,28 @@ export default function App() {
     }
   };
 
-  // Immunity Toggle
+  // Immunity Toggle (If granted to nominated contestant, automatically removes them from Danger Zone)
   const handleToggleImmunity = (contestantId) => {
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
+        if (c.status === 'Evicted') return c;
         const nextImmune = !c.isImmune;
-        // If granted immunity and they were nominated, remove them from Danger Zone!
-        const nextStatus = nextImmune && c.status === 'Nominated' ? 'Immune' : nextImmune ? 'Immune' : 'Active';
+        
+        let nextStatus = c.status;
+        if (c.isCaptain) {
+          nextStatus = 'Captain';
+        } else if (nextImmune) {
+          nextStatus = 'Immune';
+        } else {
+          nextStatus = 'Active';
+        }
+
         return {
           ...c,
           isImmune: nextImmune,
-          status: c.isCaptain ? 'Captain' : nextStatus,
+          status: nextStatus,
+          dangerZoneVotes: nextImmune ? 0 : c.dangerZoneVotes,
+          nominationReason: nextImmune ? null : c.nominationReason
         };
       }
       return c;
@@ -185,14 +218,25 @@ export default function App() {
     }
   };
 
-  // Nomination Toggle (Danger Zone)
+  // Nomination Toggle (Strict validation: immune, captain, or evicted CANNOT be nominated)
   const handleToggleNomination = (contestantId, reason = '') => {
+    const target = contestants.find(c => c.id === contestantId);
+    if (!target) return;
+
+    // Strict guard against nominating immune / captain / evicted
+    if (target.status !== 'Nominated') {
+      if (target.isImmune || target.isCaptain || target.status === 'Evicted') {
+        logActivity(`Nomination Blocked`, `${target.name} has immunity shield / captaincy and cannot be nominated.`);
+        return;
+      }
+    }
+
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
         const isNominated = c.status === 'Nominated';
         return {
           ...c,
-          status: isNominated ? 'Active' : 'Nominated',
+          status: isNominated ? (c.isImmune ? 'Immune' : c.isCaptain ? 'Captain' : 'Active') : 'Nominated',
           dangerZoneVotes: isNominated ? 0 : 200,
           nominationReason: isNominated ? null : (reason || 'House tactical consensus'),
         };
@@ -200,17 +244,14 @@ export default function App() {
       return c;
     }));
 
-    const target = contestants.find(c => c.id === contestantId);
-    if (target) {
-      const isNom = target.status === 'Nominated';
-      logActivity(
-        isNom ? `Pardoned from Danger Zone: ${target.name}` : `Nominated to Danger Zone: ${target.name}`,
-        reason || ''
-      );
-    }
+    const isNom = target.status === 'Nominated';
+    logActivity(
+      isNom ? `Pardoned from Danger Zone: ${target.name}` : `Nominated to Danger Zone: ${target.name}`,
+      reason || ''
+    );
   };
 
-  // Eviction Execution
+  // Eviction Execution (Removes from active house & leaderboard, clears immunity & captaincy)
   const handleConfirmEviction = (contestantId, reason) => {
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
@@ -219,6 +260,8 @@ export default function App() {
           status: 'Evicted',
           isCaptain: false,
           isImmune: false,
+          dangerZoneVotes: 0,
+          nominationReason: null,
           evictedDay: 22,
           evictionReason: reason || 'Evicted via official Big Boss verdict.',
         };
@@ -259,17 +302,21 @@ export default function App() {
   // Add or Edit Contestant
   const handleSaveContestant = (data) => {
     if (editingContestant) {
-      setContestants(prev => prev.map(c => c.id === data.id ? { ...c, ...data } : c));
+      setContestants(prev => prev.map(c => c.id === data.id ? { ...c, ...data, points: Math.max(0, Number(data.points) || 0) } : c));
       logActivity(`Contestant Profile Modified: ${data.name}`);
     } else {
-      setContestants(prev => [data, ...prev]);
+      const validatedData = {
+        ...data,
+        points: Math.max(0, Number(data.points) || 0)
+      };
+      setContestants(prev => [validatedData, ...prev]);
       logActivity(`New Contestant Enlisted: ${data.name} (${data.team})`);
       soundManager.playSuccess();
     }
     setEditingContestant(null);
   };
 
-  // Task Completion
+  // Task Completion (Awards points cleanly by ID or by name)
   const handleCompleteTask = (taskId) => {
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) return;
@@ -282,14 +329,16 @@ export default function App() {
       return t;
     }));
 
-    // Reward points!
-    if (targetTask.assignedType === 'contestant' && targetTask.contestantId) {
+    const rewardPts = Number(targetTask.points) || 0;
+
+    // Reward points
+    if (targetTask.assignedType === 'contestant') {
       setContestants(prev => prev.map(c => {
-        if (c.id === targetTask.contestantId) {
+        if ((targetTask.contestantId && c.id === targetTask.contestantId) || (!targetTask.contestantId && c.name === targetTask.assignedTo)) {
           return {
             ...c,
-            points: c.points + targetTask.points,
-            tasksCompleted: (c.tasksCompleted || 0) + 1
+            points: (Number(c.points) || 0) + rewardPts,
+            tasksCompleted: (Number(c.tasksCompleted) || 0) + 1
           };
         }
         return c;
@@ -300,15 +349,15 @@ export default function App() {
         if (c.team === targetTask.assignedTo && c.status !== 'Evicted') {
           return {
             ...c,
-            points: c.points + targetTask.points,
-            tasksCompleted: (c.tasksCompleted || 0) + 1
+            points: (Number(c.points) || 0) + rewardPts,
+            tasksCompleted: (Number(c.tasksCompleted) || 0) + 1
           };
         }
         return c;
       }));
     }
 
-    logActivity(`Task Completed: "${targetTask.title}"`, `+${targetTask.points} PTS awarded to ${targetTask.assignedTo}`);
+    logActivity(`Task Completed: "${targetTask.title}"`, `+${rewardPts} PTS awarded to ${targetTask.assignedTo}`);
   };
 
   const handleFailTask = (taskId) => {
@@ -336,25 +385,28 @@ export default function App() {
     logActivity(`New Directive Dispatched: "${newTask.title}" for ${newTask.assignedTo}`);
   };
 
-  // Announcements
+  // Announcements (Rejects empty / whitespace)
   const handleAddAnnouncement = (message, type = 'alert') => {
+    if (!message || !message.trim()) return;
+    const cleanMessage = message.trim();
+
     const item = {
       id: 'a_' + Date.now(),
-      message,
+      message: cleanMessage,
       timestamp: `Day 22, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       type,
       priority: 'HIGH'
     };
     setAnnouncements(prev => [item, ...prev]);
     setLatestAnnouncementOverlay(item);
-    logActivity(`Announcement Broadcast: "${message}"`);
+    logActivity(`Announcement Broadcast: "${cleanMessage}"`);
   };
 
   // Nominee Votes Update
   const handleUpdateNomineeVotes = (contestantId, delta) => {
     setContestants(prev => prev.map(c => {
       if (c.id === contestantId) {
-        return { ...c, dangerZoneVotes: Math.max(10, (c.dangerZoneVotes || 150) + delta) };
+        return { ...c, dangerZoneVotes: Math.max(10, (Number(c.dangerZoneVotes) || 150) + delta) };
       }
       return c;
     }));
@@ -369,7 +421,7 @@ export default function App() {
       setActivityLogs([
         { id: 'l_init', action: 'House data reset to default Big Boss demo state', timestamp: 'Just now' }
       ]);
-      localStorage.clear();
+      try { localStorage.clear(); } catch (e) { console.warn(e); }
       soundManager.playGong();
     }
   };
@@ -500,11 +552,12 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'timer' && (
+        {/* Task Timer is kept mounted with display toggle so countdown is never interrupted across tab switches */}
+        <div className={activeTab === 'timer' ? 'block' : 'hidden'}>
           <TaskTimer
             onAnnounceTimerDone={(msg) => handleAddAnnouncement(msg, 'danger')}
           />
-        )}
+        </div>
 
         {activeTab === 'stats' && (
           <HouseStats

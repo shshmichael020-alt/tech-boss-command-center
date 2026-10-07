@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, 
   Pause, 
@@ -18,37 +18,46 @@ export default function TaskTimer({ onAnnounceTimerDone }) {
   const [isRunning, setIsRunning] = useState(false);
   const [taskName, setTaskName] = useState('Critical Hackathon Challenge Sprint');
 
-  // Handle countdown
+  const onAnnounceRef = useRef(onAnnounceTimerDone);
+  const taskNameRef = useRef(taskName);
+
   useEffect(() => {
-    let interval = null;
-    if (isRunning && remainingSeconds > 0) {
-      interval = setInterval(() => {
-        setRemainingSeconds(prev => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            setIsRunning(false);
-            handleTimerComplete();
-            return 0;
-          }
-          if (prev <= 6) {
-            soundManager.playTick();
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (remainingSeconds === 0) {
-      setIsRunning(false);
-    }
-    return () => clearInterval(interval);
-  }, [isRunning, remainingSeconds]);
+    onAnnounceRef.current = onAnnounceTimerDone;
+  }, [onAnnounceTimerDone]);
+
+  useEffect(() => {
+    taskNameRef.current = taskName;
+  }, [taskName]);
 
   const handleTimerComplete = () => {
     soundManager.playBuzzer();
     soundManager.speak("Housemates, samay samapt! Time is up for the task!");
-    if (onAnnounceTimerDone) {
-      onAnnounceTimerDone(`Task Timer Expired for: ${taskName}`);
+    if (onAnnounceRef.current) {
+      onAnnounceRef.current(`Task Timer Expired for: ${taskNameRef.current}`);
     }
   };
+
+  // Stable Single-Interval Countdown
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const interval = setInterval(() => {
+      setRemainingSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setIsRunning(false);
+          setTimeout(() => handleTimerComplete(), 10);
+          return 0;
+        }
+        if (prev <= 6) {
+          soundManager.playTick();
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isRunning]);
 
   const handleStart = () => {
     if (remainingSeconds === 0) {
@@ -83,12 +92,13 @@ export default function TaskTimer({ onAnnounceTimerDone }) {
 
   // Format mm:ss
   const formatTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
+    const safeSecs = Math.max(0, secs);
+    const m = Math.floor(safeSecs / 60);
+    const s = safeSecs % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const progress = totalSeconds > 0 ? ((totalSeconds - remainingSeconds) / totalSeconds) * 100 : 0;
+  const progress = totalSeconds > 0 ? Math.min(100, Math.max(0, ((totalSeconds - remainingSeconds) / totalSeconds) * 100)) : 0;
   const isDanger = remainingSeconds <= 30 && remainingSeconds > 0;
   const isFinished = remainingSeconds === 0;
 
